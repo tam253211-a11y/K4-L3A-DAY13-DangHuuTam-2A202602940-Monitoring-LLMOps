@@ -7,9 +7,35 @@ primary_slo:
     total_event: 'event == "request_received"'
   target_percent: 99.5
   error_budget_percent: 0.5
-  note: Học viên phải giải thích hoặc điều chỉnh ngưỡng bằng baseline của mình.
+  note: >
+    Giữ ngưỡng 3000 ms và mục tiêu 99.5% sau khi đo baseline của tôi
+    (2026-09-29, 60 request, load_test concurrency 2): P50 152 ms, P95 156 ms,
+    P99 2426 ms, TTFT P95 50 ms, 100% request <= 3000 ms. Ngưỡng 3000 ms cao
+    gấp ~19 lần P95 nên không báo động giả, nhưng vẫn bắt được đuôi chậm thật:
+    P99 2426 ms đến từ request phải chờ tải prompt từ Langfuse (timeout 2 s),
+    và incident rag_slow (+2500 ms) đẩy request lên sát ngưỡng. Một request
+    lỗi (request_failed) không có response_sent nên cũng là bad event.
+  error_budget:
+    # Budget = (1 - target) x tổng request trong cửa sổ 28 ngày.
+    formula: 'allowed_bad_events = (1 - 0.995) * total_requests_28d'
+    example_at_1_rpm:
+      total_requests_28d: 40320        # 1 req/min x 60 x 24 x 28
+      allowed_bad_events: 201          # 0.5% x 40320 = 201.6
+    as_time_equivalent: '0.5% x 28d = 201.6 minutes (~3h22m) of total outage'
+    burn_rate_alerting: >
+      Burn rate = tỉ lệ bad event hiện tại / 0.5%. Error rate 2% (ngưỡng alert
+      HighErrorRate) = burn rate 4x: giữ 4x liên tục sẽ hết budget 28 ngày sau 7 ngày.
+    policy: >
+      Còn > 50% budget: được deploy/đổi prompt bình thường. Còn < 25%: chỉ deploy
+      bản sửa lỗi, mọi thay đổi prompt phải có rollback plan. Hết budget: đóng
+      băng thay đổi cho tới khi SLI hồi phục.
 guardrails:
   error_rate_pct_max: 2
   daily_cost_usd_max: 2.5
   quality_score_avg_min: 0.75
   retrieval_success_rate_pct_min: 90
+  baseline_2026_09_29:
+    error_rate_pct: 0
+    avg_cost_usd_per_request: 0.00214
+    quality_score_avg: 0.88
+    retrieval_success_rate_pct: 100

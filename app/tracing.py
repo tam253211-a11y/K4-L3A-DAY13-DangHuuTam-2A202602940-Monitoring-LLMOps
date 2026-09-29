@@ -36,6 +36,16 @@ def get_langfuse_client():
     return get_client()
 
 
+def update_current_observation(**kwargs: Any) -> None:
+    """Update the innermost span/retriever observation (child of the agent run)."""
+    get_client().update_current_span(**kwargs)
+
+
+def update_current_generation(**kwargs: Any) -> None:
+    """Attach model, prompt, usage and cost to the innermost generation."""
+    get_client().update_current_generation(**kwargs)
+
+
 def tracing_enabled() -> bool:
     return LANGFUSE_SDK_AVAILABLE and bool(
         os.getenv("LANGFUSE_PUBLIC_KEY") and os.getenv("LANGFUSE_SECRET_KEY")

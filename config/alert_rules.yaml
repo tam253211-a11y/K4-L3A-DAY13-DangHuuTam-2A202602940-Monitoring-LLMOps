@@ -1,25 +1,52 @@
+# Symptom-based alerts: each fires on what the user experiences (slow answers,
+# failed answers, cost per answer), never on an internal component name.
+# Conditions use the same log fields as config/dashboard.yaml, so every alert
+# maps to a dashboard panel an on-call engineer can open first.
 alerts:
-  - name: TODO_alert_1
-    severity: TODO
-    condition: TODO
-    duration: TODO
+  - name: HighLatencyP95
+    severity: P2
+    condition: 'p95(latency_ms where event == "response_sent") over 5m > 2000'
+    duration: 5m
     type: symptom-based
     channel: slack
-    owner: TODO
+    slack_channel: "#day13-oncall"
+    owner: dang-huu-tam
+    slo: fast_successful_requests
+    dashboard_panel: latency
     runbook: docs/alerts.md#alert-1
-  - name: TODO_alert_2
-    severity: TODO
-    condition: TODO
-    duration: TODO
+    rationale: >
+      Normal P95 is well under 1000 ms. 2000 ms is an early warning below the
+      3000 ms SLO line, so on-call acts before requests start burning the
+      error budget (e.g. rag_slow adds ~2500 ms per request).
+
+  - name: HighErrorRate
+    severity: P1
+    condition: 'count(event == "request_failed") / count(event == "request_received") * 100 over 5m > 2'
+    duration: 5m
     type: symptom-based
     channel: slack
-    owner: TODO
+    slack_channel: "#day13-oncall"
+    owner: dang-huu-tam
+    slo: fast_successful_requests
+    dashboard_panel: errors
     runbook: docs/alerts.md#alert-2
-  - name: TODO_alert_3
-    severity: TODO
-    condition: TODO
-    duration: TODO
+    rationale: >
+      Every failed request is a bad event for the SLO and the user gets HTTP 500.
+      Matches the 2% error-rate guardrail in config/slo.yaml; retrieval success
+      on the same panel shows whether the vector store is the cause.
+
+  - name: CostPerRequestSpike
+    severity: P3
+    condition: 'avg(cost_usd where event == "response_sent") over 15m > 0.005'
+    duration: 15m
     type: symptom-based
     channel: slack
-    owner: TODO
+    slack_channel: "#day13-oncall"
+    owner: dang-huu-tam
+    slo: daily_cost_usd_max
+    dashboard_panel: cost
     runbook: docs/alerts.md#alert-3
+    rationale: >
+      Baseline cost is ~0.002 USD per answer. Averaging per request (not total)
+      catches a token blow-up even when traffic is flat; 0.005 is ~2.5x baseline.
+      A longer 15m window avoids paging on one long answer.
