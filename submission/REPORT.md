@@ -9,7 +9,7 @@
 - **Lớp:** K4-L3A
 - **Repository URL:** https://github.com/tam253211-a11y/K4-L3A-DAY13-DangHuuTam-2A202602940-Monitoring-LLMOps
 - **Commit SHA cuối:**
-- **Challenge ID:**
+- **Challenge ID:** `day13-k4-l3a-monitoring-llmops-v1`
 - **Tên project Langfuse cá nhân:** `day13-k4-l3a-2A202602940`
 
 ## 2. Evidence index
@@ -88,14 +88,16 @@
 
 ## 7. Điều tra challenge
 
-- **Challenge ID:**
-- **Khoảng thời gian điều tra:**
-- **Triệu chứng từ metrics:**
-- **Log line và correlation ID liên quan:**
-- **Trace ID và span gây ảnh hưởng:**
-- **Root cause:**
-- **Fix action:**
-- **Preventive measure:**
+- **Challenge ID:** `day13-k4-l3a-monitoring-llmops-v1` (cohort K4, seed 1311, 5 query; file riêng do Lab Coach gửi, lưu tại `config/challenge.json`, đã `.gitignore`, không commit).
+- **Khoảng thời gian điều tra:** 2026-09-29 16:37:08 – 16:38:45 (UTC+7). Inject incident lúc 16:37:08, chạy `load_test.py --challenge --concurrency 5` 16:37:10 – 16:37:26, tắt incident lúc 16:38:45 rồi chạy lại cùng workload để xác nhận hồi phục.
+- **Triệu chứng từ metrics:** Panel *Latency percentiles and TTFT* (`evidence/12-incident-metric.png`): ở bucket phút 16:37, latency của feature `monitoring` nhảy lên **P50 2,654 ms, P95 4,947 ms** (vượt đường SLO 3,000 ms) so với baseline P50 152 ms / P95 156 ms; **TTFT P95 vẫn 50 ms**. Các panel khác bình thường: error rate 0%, retrieval success 100%, tokens/cost/quality không đổi (cost 0.0013–0.0024 USD/request, quality 0.8–0.9). Phía client, 5 request mất 13.5–16.2 s. Nhận xét: badge 60 phút vẫn "Within threshold" (P95 toàn cửa sổ 156 ms, P99 tăng 2,016 → 2,654 ms) vì 5/208 request bị pha loãng — đó là lý do alert `HighLatencyP95` dùng cửa sổ 5 phút. Kết luận bước 1: request chậm nhưng không lỗi, và TTFT không đổi ⇒ thời gian mất ở **trước** khi gọi LLM.
+- **Log line và correlation ID liên quan:** Lọc `data/logs.jsonl` trong 16:37 (`evidence/13-incident-log.png`), chọn request tiêu biểu **`req-bd106a89`**:
+  `{"service": "api", "latency_ms": 2654, "ttft_ms": 50, "tokens_in": 34, "tokens_out": 153, "cost_usd": 0.002397, "quality_score": 0.9, "tool_name": "retrieval", "tool_success": true, ..., "event": "response_sent", "correlation_id": "req-bd106a89", "feature": "monitoring", "model": "claude-sonnet-4-5", "ts": "2026-09-29T09:37:23.930999Z"}`
+  Cả 5 request `req-40ea960e`, `req-5cc8f3b4`, `req-6c5b56a2`, `req-bd106a89`, `req-c724bbf8` đều `latency_ms` 2,653–4,947 với `ttft_ms` 50, `tool_success: true`. Ngay trước đó có log `{"service": "control", "payload": {"name": "rag_slow"}, "event": "incident_enabled", "ts": "2026-09-29T09:37:09.683725Z"}` và sau khi xử lý có `incident_disabled` lúc 09:38:45Z — khớp đúng khoảng sự cố.
+- **Trace ID và span gây ảnh hưởng:** Trace **`2d8bef9f222eb0713d981a5f52c24b0a`** (metadata `correlation_id = req-bd106a89`, `evidence/14-incident-trace.png`): `lab-agent-run` 2.655 s = **`retrieval` 2.502 s** + `llm-generation` 0.152 s; không span nào level ERROR. So với baseline (trace `47a96d4e3e031293e6ca0aa0ff55a8e7`: retrieval ~0 ms, generation 151 ms), chỉ `retrieval` thay đổi. 4 trace còn lại của challenge đều có `retrieval` 2.501–2.502 s. Riêng `req-40ea960e` (trace `6987003491b9c34a907bb4ff18344f83`, 4.948 s) có thêm ~2.3 s giữa retrieval và generation — request đầu tiên sau khi cache prompt hết hạn phải tải prompt từ Langfuse.
+- **Root cause:** Bước **retrieval (vector store) chậm thêm ~2.5 s mỗi request** (incident `rag_slow` do challenge inject). Ba lớp bằng chứng cùng chỉ về một chỗ: metric latency tăng nhưng TTFT/tokens/errors không đổi → log cùng request `latency_ms` 2,654 với `ttft_ms` 50 → trace cùng `correlation_id` có span `retrieval` 2.50 s chiếm 94% thời gian. Xác nhận ngược: tắt incident lúc 16:38:45 thì cùng 5 query quay về ~805 ms phía client. Yếu tố khuếch đại: endpoint `async def chat` gọi `agent.run` đồng bộ nên chặn event loop — 5 request đồng thời bị xếp hàng (bắt đầu cách nhau đúng ~2.65 s), vì vậy client thấy 13.5–16.2 s dù mỗi request chỉ tốn 2.65 s ở server.
+- **Fix action:** (1) Tắt nguồn gây chậm — `python scripts/inject_incident.py --disable` (tương đương khôi phục vector store), đã xác nhận hồi phục. (2) Đặt timeout cho retrieval (ví dụ 500 ms) và fallback trả lời không cần docs khi quá hạn, để một dependency chậm không kéo cả request vượt SLO. (3) Chuyển `chat` sang `def` (FastAPI chạy trong threadpool) hoặc bọc `agent.run` bằng `run_in_threadpool`, để một request chậm không chặn các request khác.
+- **Preventive measure:** Alert `HighLatencyP95` (P95 > 2000 ms trong 5m) sẽ bắn trước khi chạm SLO 3000 ms; bổ sung SLI riêng cho retrieval (P95 của span `retrieval`, ví dụ ≤ 300 ms) để alert chỉ thẳng thành phần hỏng; thêm panel/metric `retrieval_ms` vào dashboard (đã có trong trace metadata); load test định kỳ với concurrency > 1 để phát hiện lỗi chặn event loop; runbook `docs/alerts.md#alert-1` đã ghi sẵn bước so sánh span `retrieval` vs `llm-generation`.
 
 ## 8. Giải thích và tự đánh giá
 
