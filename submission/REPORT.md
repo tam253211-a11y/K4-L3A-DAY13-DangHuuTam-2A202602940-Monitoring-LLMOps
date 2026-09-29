@@ -16,22 +16,33 @@
 
 Điền đúng đường dẫn tới evidence thực tế. Có thể đổi tên hoặc dùng nhiều ảnh nếu cần.
 
-| Evidence | Đường dẫn |
-|---|---|
-| Pytest cuối | `evidence/01-pytest.png` |
-| Log validator | `evidence/02-log-validator.png` |
-| Dashboard validator | `evidence/03-dashboard-validator.txt` |
-| Structured log | `evidence/04-structured-log.png` |
-| PII redaction | `evidence/05-pii-redaction.png` |
-| Trace list | `evidence/06-trace-list.png` |
-| Trace waterfall | `evidence/07-trace-waterfall.png` |
-| Trace metadata | `evidence/08a-trace-by-correlation-id.png` (lọc theo `correlation_id`), `evidence/08b-trace-metadata.png` (metadata đầy đủ); token/cost xem `evidence/07-trace-waterfall.png` |
-| Prompt versions | `evidence/09-prompt-versions.png` |
-| Prompt rollback | `evidence/10a-prompt-promote.png`, `evidence/10b-prompt-rollback.png` |
-| Dashboard runtime | `evidence/11-dashboard-overview.png` |
-| Incident metric | `evidence/12-incident-metric.png` |
-| Incident log | `evidence/13-incident-log.png` |
-| Incident trace | `evidence/14-incident-trace.png` |
+| Evidence | Đường dẫn | Nguồn |
+|---|---|---|
+| Pytest cuối | [evidence/01-pytest.txt](evidence/01-pytest.txt) — 30 passed | terminal |
+| Log validator | [evidence/02-log-validator.png](evidence/02-log-validator.png) — 100/100 | terminal |
+| Dashboard validator | [evidence/03-dashboard-validator.txt](evidence/03-dashboard-validator.txt) — 6/6 | terminal |
+| Structured log | [evidence/04-structured-log.png](evidence/04-structured-log.png) | `data/logs.jsonl` |
+| PII redaction | [evidence/05-pii-redaction.png](evidence/05-pii-redaction.png) | `data/logs.jsonl` |
+| Trace list | [evidence/06-trace-list.png](evidence/06-trace-list.png) | Langfuse |
+| Trace waterfall | [evidence/07-trace-waterfall.png](evidence/07-trace-waterfall.png) (kèm token/cost/TTFT) | Langfuse |
+| Trace metadata | [evidence/08a-trace-by-correlation-id.png](evidence/08a-trace-by-correlation-id.png) (lọc theo `correlation_id`), [evidence/08b-trace-metadata.png](evidence/08b-trace-metadata.png) (metadata đầy đủ) | Langfuse |
+| Prompt versions | [evidence/09-prompt-versions.png](evidence/09-prompt-versions.png) | Langfuse |
+| Prompt rollback | [evidence/10a-prompt-promote.png](evidence/10a-prompt-promote.png), [evidence/10b-prompt-rollback.png](evidence/10b-prompt-rollback.png) | Langfuse |
+| Dashboard runtime | [evidence/11-dashboard-overview.png](evidence/11-dashboard-overview.png) | `scripts/build_dashboard.py` |
+| Incident metric | [evidence/12-incident-metric.png](evidence/12-incident-metric.png) | `scripts/build_dashboard.py` |
+| Incident log | [evidence/13-incident-log.png](evidence/13-incident-log.png) | `data/logs.jsonl` |
+| Incident trace | [evidence/14-incident-trace.png](evidence/14-incident-trace.png) | Langfuse |
+| Baseline (CP0) | [pytest](evidence/00-baseline-pytest.txt), [validate_logs](evidence/00-baseline-validate-logs.txt), [validate_dashboard](evidence/00-baseline-validate-dashboard.txt) | terminal |
+
+Config/runbook kiểm tra trực tiếp trên repo: [config/slo.yaml](../config/slo.yaml), [config/alert_rules.yaml](../config/alert_rules.yaml), [docs/alerts.md](../docs/alerts.md), [config/dashboard.yaml](../config/dashboard.yaml).
+
+### Evidence chính
+
+![Trace waterfall](evidence/07-trace-waterfall.png)
+
+![Dashboard overview](evidence/11-dashboard-overview.png)
+
+![Incident trace](evidence/14-incident-trace.png)
 
 ## 3. Kết quả kỹ thuật
 
@@ -101,20 +112,20 @@
 
 ## 8. Giải thích và tự đánh giá
 
-- **Một quyết định kỹ thuật quan trọng và lý do:**
-- **Một lỗi/blocker đã gặp:**
-- **Cách tìm nguyên nhân và xử lý:**
-- **Cách hiểu luồng Metrics → Logs → Traces:**
-- **Vai trò của prompt version, token/cost, SLO hoặc rollback trong vận hành LLM:**
-- **Điều quan trọng nhất đã học:**
-- **Hạn chế hoặc phần chưa hoàn thành, nếu có:**
+- **Một quyết định kỹ thuật quan trọng và lý do:** Dựng dashboard bằng một script Python ([scripts/build_dashboard.py](../scripts/build_dashboard.py)) đọc thẳng `config/dashboard.yaml` thay vì vẽ tay trong một công cụ riêng. Lý do: (1) tên panel, đơn vị, threshold lấy từ chính contract nên dashboard không thể lệch contract — đổi ngưỡng trong YAML là dashboard đổi theo; (2) không cần cài thêm dependency (Grafana/Streamlit), ai clone repo cũng chạy lại được; (3) phần tổng hợp (percentile, error rate, retrieval success) có test tự động. Tương tự, với tracing tôi dùng `@observe` trên hai method `_retrieve`/`_generate` để Langfuse tự gắn chúng làm con của `lab-agent-run`, và chỉ gửi preview đã scrub thay vì raw prompt/answer để trace không chứa PII.
+- **Một lỗi/blocker đã gặp:** Sau khi rollback label `production` về v1 trên Langfuse, request đầu tiên vẫn chạy bằng prompt v2 (`req-8c55bebf`, trace `11084b54a0b8d5f9875e3d091a605a59`, `prompt_version=2`), như thể rollback không có tác dụng. Ngoài ra khi gửi request thử bằng `curl` trong PowerShell 5.1, API trả `JSON decode error` vì PowerShell làm hỏng dấu `"` trong chuỗi có khoảng trắng.
+- **Cách tìm nguyên nhân và xử lý:** Tôi không đoán mà nhìn vào metadata của trace: `prompt_version` của từng request cho biết chính xác version nào đã chạy, và `tokens_in` (36 với v1, 46 với v2) xác nhận thêm từ log. Đọc `app/prompt_management.py` thấy `get_prompt(..., cache_ttl_seconds=60)`: SDK giữ prompt trong cache 60 s, khi hết hạn nó trả bản cũ trong lúc tải bản mới ở nền. Gửi thêm một request thì trace `47a96d4e3e031293e6ca0aa0ff55a8e7` đã là `prompt_version=1`. Bài học vận hành: rollback prompt có độ trễ tối đa ≈ TTL + 1 request; khi sự cố nặng cần restart API hoặc giảm TTL. Với lỗi PowerShell, tôi chuyển sang `Invoke-RestMethod` với body tạo bằng `ConvertTo-Json`.
+- **Cách hiểu luồng Metrics → Logs → Traces:** Metrics trả lời *có vấn đề gì và khi nào* nhưng là số tổng hợp, không chỉ ra request nào; logs trả lời *request nào bị ảnh hưởng* — mỗi dòng có `correlation_id` và các field như `latency_ms`, `ttft_ms`; traces trả lời *bước nào gây ra* vì tách thời gian từng span. `correlation_id` là sợi dây nối log với trace. Ở CP3: metric cho thấy P95 phút 16:37 lên 4,947 ms nhưng TTFT vẫn 50 ms (⇒ chậm trước LLM) → log `req-bd106a89` có `latency_ms 2654, ttft_ms 50` → trace cùng ID cho thấy `retrieval` 2.50 s / 2.65 s. Chỉ khi ba lớp khớp nhau tôi mới kết luận root cause, và xác nhận ngược bằng cách tắt incident rồi đo lại.
+- **Vai trò của prompt version, token/cost, SLO hoặc rollback trong vận hành LLM:** Prompt là "code" của ứng dụng LLM nhưng đổi được mà không cần deploy, nên phải có version và label để biết mỗi request dùng prompt nào và rollback được khi prompt mới gây hại — tôi gắn `prompt_name/label/version` vào mọi trace. Token/cost là chi phí biến đổi theo từng request: v2 thêm một dòng hướng dẫn đã làm `tokens_in` tăng 10 token/request; ở quy mô lớn đó là tiền thật, nên alert `CostPerRequestSpike` đo cost *trên mỗi request* để bắt được cả khi traffic không đổi. SLO (99.5% request thành công và ≤ 3000 ms) biến "hệ thống ổn không" thành con số có error budget; budget còn lại quyết định có được đổi prompt/deploy tiếp hay phải đóng băng.
+- **Điều quan trọng nhất đã học:** Số tổng hợp có thể che mất sự cố. Trong CP3, P95 của cả cửa sổ 60 phút vẫn 156 ms và dashboard vẫn "Within threshold" dù 5 request vừa mất 2.6–4.9 s — sự cố bị pha loãng bởi 200 request bình thường. Phải nhìn tail latency (P99), nhìn theo bucket thời gian ngắn, và đặt alert trên cửa sổ ngắn (5 phút) thay vì tin vào trung bình.
+- **Hạn chế hoặc phần chưa hoàn thành, nếu có:** (1) Dashboard là trang HTML sinh lại theo chu kỳ (`--watch`), không phải hệ thống giám sát thời gian thực; badge đánh giá trên cửa sổ 60 phút nên không phản ánh sự cố ngắn — nên bổ sung giá trị "5 phút gần nhất". (2) Ba alert mới ở dạng định nghĩa + runbook, chưa nối vào Alertmanager/Slack thật. (3) Các fix action của CP3 (timeout + fallback cho retrieval, chạy `agent.run` trong threadpool để không chặn event loop) mới được đề xuất, chưa triển khai. (4) Tôi dùng Claude Code hỗ trợ viết code, dựng dashboard và chụp ảnh dashboard bằng trình duyệt headless; tôi đã kiểm tra và hiểu các thay đổi trong commit.
 
 ## 9. Checklist trước khi nộp
 
-- [ ] Kết quả và evidence thuộc commit SHA cuối.
-- [ ] Tất cả ảnh/output mở được bằng đường dẫn tương đối.
-- [ ] Incident evidence nối đúng metric → log → trace.
-- [ ] Trace/prompt evidence thuộc project Langfuse cá nhân và ảnh không lộ key/secret.
-- [ ] Repository chạy lại được theo README.
-- [ ] Không có secret, API key, PII thô hoặc evidence của người khác/lớp khác.
+- [x] Kết quả và evidence thuộc commit SHA cuối.
+- [x] Tất cả ảnh/output mở được bằng đường dẫn tương đối.
+- [x] Incident evidence nối đúng metric → log → trace.
+- [x] Trace/prompt evidence thuộc project Langfuse cá nhân và ảnh không lộ key/secret.
+- [x] Repository chạy lại được theo README.
+- [x] Không có secret, API key, PII thô hoặc evidence của người khác/lớp khác.
 - [ ] URL repo và commit SHA cuối đã được nộp trên LMS/Codelabs.
