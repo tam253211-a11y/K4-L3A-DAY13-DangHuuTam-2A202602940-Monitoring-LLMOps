@@ -4,13 +4,13 @@
 
 ## 1. Thông tin học viên
 
-- **Họ và tên:**
-- **MSSV:**
+- **Họ và tên:** Đặng Hữu Tâm
+- **MSSV:** 2A202602940
 - **Lớp:** K4-L3A
-- **Repository URL:**
+- **Repository URL:** https://github.com/tam253211-a11y/K4-L3A-DAY13-DangHuuTam-2A202602940-Monitoring-LLMOps
 - **Commit SHA cuối:**
 - **Challenge ID:**
-- **Tên project Langfuse cá nhân:** `day13-k4-l3a-<MSSV>`
+- **Tên project Langfuse cá nhân:** `day13-k4-l3a-2A202602940`
 
 ## 2. Evidence index
 
@@ -37,11 +37,11 @@
 
 | Nội dung | Baseline | Kết quả cuối | Nhận xét |
 |---|---|---|---|
-| `validate_logs.py` | | | |
-| `validate_dashboard.py` | | | |
-| `pytest` | | | |
-| Số traces hợp lệ | | | |
-| Số PII leak | | | |
+| `validate_logs.py` | 30/100 (thiếu required fields, 0 correlation ID, thiếu enrichment) | | |
+| `validate_dashboard.py` | 6/6 panel | | |
+| `pytest` | 22 passed | | |
+| Số traces hợp lệ | 10 traces, chỉ có root `lab-agent-run` (chưa có child observation) | | |
+| Số PII leak | 0 (theo `validate_logs.py`) | | |
 | Latency P95 / TTFT P95 | | | |
 | Retrieval success rate | | | |
 
