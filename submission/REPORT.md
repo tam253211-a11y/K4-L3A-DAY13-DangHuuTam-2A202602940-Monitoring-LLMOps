@@ -8,7 +8,7 @@
 - **MSSV:** 2A202602940
 - **Lớp:** K4-L3A
 - **Repository URL:** https://github.com/tam253211-a11y/K4-L3A-DAY13-DangHuuTam-2A202602940-Monitoring-LLMOps
-- **Commit SHA cuối:**
+- **Commit SHA cuối:** `b823cc8c9073e67d0b4b9aa7c54eb3d5bc865daf` (commit chứa toàn bộ source, report và evidence; commit ngay sau nó chỉ cập nhật dòng này và là SHA nộp trên LMS)
 - **Challenge ID:** `day13-k4-l3a-monitoring-llmops-v1`
 - **Tên project Langfuse cá nhân:** `day13-k4-l3a-2A202602940`
 
